@@ -1,6 +1,6 @@
 from torch import Tensor
 from torch.ao.quantization.experimental.observer import APoTObserver
-from torch.ao.quantization.experimental.apot_utils import float_to_apot, float_to_reduced_precision
+from torch.ao.quantization.experimental.apot_utils import float_to_apot, float_to_reduced_precision, apot_to_float
 
 # class to store APoT quantizer
 # implements quantize and dequantize
@@ -22,6 +22,7 @@ class APoTQuantizer():
         signed,
             dtype=torch.quint8) -> None:
         self.signed = signed
+        self.use_int_repr = True
 
         # check for valid inputs of b, k
         assert(k and k != 0)
@@ -59,8 +60,29 @@ class APoTQuantizer():
 
         return result
 
-    def dequantize(self) -> Tensor:
-        raise NotImplementedError
+    r""" Dequantizes integer Tensor to floating point representation
+    based on the calculated quantization levels from a specified APoT non-uniform observer.
+    The approach follows the method outlined in the APoT paper: https://arxiv.org/pdf/1909.13144.pdf.
+    Args:
+        self: APoTQuantizer with attr data to dequantize
+    Returns:
+        result: floating point representation of input Tensor
+    """
+    def dequantize(self):  # type: ignore[override]
+        if self.use_int_repr:
+            tensor2dequantize = self.data.float()
+
+            max_val = 1.0
+
+            quantization_levels = self.quantization_levels
+            level_indices = self.level_indices
+
+            # map apot_to_float over tensor2quantize elements
+            result = tensor2dequantize.apply_(lambda x: float(apot_to_float(x, quantization_levels, level_indices)))
+
+            return result
+        else:
+            return self.data
 
     def q_apot_alpha(self) -> float:
         raise NotImplementedError
